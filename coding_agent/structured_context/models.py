@@ -190,6 +190,41 @@ class KeySequence:
 
 
 @dataclass
+class MacroTimelineEntry:
+    """One concise entry in the folded macro timeline.
+
+    Preserves a high-level chronological trace of what happened over a
+    step/turn range, so the agent maintains a continuous global timeline of the
+    execution.
+    """
+
+    id: str
+    step_range: str = ""
+    summary: str = ""  # what was done and the key outcome
+    outcome: str = "observed"  # succeeded | failed | mixed | observed | loop
+    status: str = "valid"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "step_range": self.step_range,
+            "summary": self.summary,
+            "outcome": self.outcome,
+            "status": self.status,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MacroTimelineEntry:
+        return cls(
+            id=str(data["id"]),
+            step_range=str(data.get("step_range", "")),
+            summary=str(data.get("summary", "")),
+            outcome=str(data.get("outcome", "observed")),
+            status=str(data.get("status", "valid")),
+        )
+
+
+@dataclass
 class TaskState:
     schema_version: str = "1.0"
     task_id: str = ""
@@ -203,6 +238,7 @@ class TaskState:
     decisions: list[Decision] = field(default_factory=list)
     unresolved: list[UnresolvedItem] = field(default_factory=list)
     key_sequences: list[KeySequence] = field(default_factory=list)
+    macro_timeline: list[MacroTimelineEntry] = field(default_factory=list)
     extensions: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -225,6 +261,7 @@ class TaskState:
             "decisions": [item.to_dict() for item in self.decisions],
             "unresolved": [item.to_dict() for item in self.unresolved],
             "key_sequences": [item.to_dict() for item in self.key_sequences],
+            "macro_timeline": [item.to_dict() for item in self.macro_timeline],
             "extensions": dict(self.extensions),
         }
 
@@ -244,6 +281,7 @@ class TaskState:
             decisions=[Decision.from_dict(x) for x in data.get("decisions") or []],
             unresolved=[UnresolvedItem.from_dict(x) for x in data.get("unresolved") or []],
             key_sequences=[KeySequence.from_dict(x) for x in data.get("key_sequences") or []],
+            macro_timeline=[MacroTimelineEntry.from_dict(x) for x in data.get("macro_timeline") or []],
             extensions=dict(data.get("extensions") or {}),
         )
 

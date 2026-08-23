@@ -605,6 +605,7 @@ def _count_task_entries(task_state: TaskState) -> int:
         + len(task_state.decisions)
         + len(task_state.unresolved)
         + len(task_state.key_sequences)
+        + len(task_state.macro_timeline)
     )
 
 

@@ -43,6 +43,7 @@ def summarize_post_fold_memory(memory: NovaCodeMemory) -> dict[str, Any]:
             "decisions": len(memory.task_state.decisions),
             "unresolved": len(memory.task_state.unresolved),
             "key_sequences": len(memory.task_state.key_sequences),
+            "macro_timeline": len(memory.task_state.macro_timeline),
         },
         "tool_state_profiles": {
             tool: sum(len(entries) for entries in profile.values())

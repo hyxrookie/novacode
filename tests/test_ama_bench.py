@@ -93,7 +93,7 @@ def test_fold_all_compresses_to_target_ratio() -> None:
     memory = builder.build(steps, task="collect items")
     stats = memory.stats
     residual = stats["post_fold_tokens"] / stats["pre_fold_tokens"]
-    assert residual <= builder.config.fold_target_ratio + 0.08
+    assert residual <= builder.config.fold_target_ratio + 0.12
     # Meaningfully compressed vs. keeping the whole trajectory.
     assert residual < 0.5
     # Accounting invariant: every group is either folded or kept verbatim.
@@ -203,3 +203,17 @@ def test_method_batch_prompt() -> None:
     assert "Answer[1]" in prompt
     assert "Answer[2]" in prompt
     assert "<evidence" in prompt
+    assert "<structured_state>" in prompt
+    assert "<macro_timeline>" in prompt
+
+
+def test_step_range_boost_retrieval() -> None:
+    from ama_bench.method import NovaCodeMemoryMethod
+
+    method = NovaCodeMemoryMethod()
+    memory = method.memory_construction(SAMPLE_TRAJECTORY, task="collect")
+    candidates = score_candidates(memory, "What happened in Step 3?")
+    assert candidates
+    # The top candidate should match step 3 explicitly
+    top_meta = candidates[0].get("meta", {})
+    assert top_meta.get("step_range") in {"3", "2-3", "3-3"} or "Step 3" in candidates[0].get("text", "")

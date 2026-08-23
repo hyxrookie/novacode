@@ -315,7 +315,8 @@ Example of a valid `task_delta`:
       {"target": "key_findings", "value": {"id": "kf-3", "fact": "retry() sleeps before reconnecting", "evidence": [], "status": "verified", "updated_step": 42}}
     ],
     "append": [
-      {"target": "key_sequences", "item": {"id": "seq-1", "pattern": "run test, read traceback, patch", "intent": "fix flaky test", "step_range": "41-44", "status": "valid"}}
+      {"target": "key_sequences", "item": {"id": "seq-1", "pattern": "run test, read traceback, patch", "intent": "fix flaky test", "step_range": "41-44", "status": "valid"}},
+      {"target": "macro_timeline", "item": {"id": "tl-1", "step_range": "41-44", "summary": "ran tests, fixed flaky assertion, re-tested successfully", "outcome": "succeeded", "status": "valid"}}
     ],
     "remove": [{"target": "unresolved", "id": "unres-2"}],
     "mark_stale": [{"target": "key_findings", "id": "kf-1", "reason": "superseded by kf-3"}]
@@ -543,6 +544,22 @@ Use source step identifiers exactly as supplied.
 Never invent or renumber steps.
 
 If the input provides stable Interaction Group identifiers instead of step identifiers, use those stable identifiers consistently.
+
+## Macro timeline
+
+Preserve a high-level chronological trace of folded groups or phases as Task State `macro_timeline` entries so future agents retain a continuous macro-level understanding of execution progression.
+
+Each entry must have this structure:
+
+```json
+{
+  "id": "tl-1",
+  "step_range": "first-last",
+  "summary": "concise summary of actions and key outcomes",
+  "outcome": "succeeded | failed | mixed | observed | loop",
+  "status": "valid"
+}
+```
 
 ## Conflict handling
 

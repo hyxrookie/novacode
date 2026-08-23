@@ -47,28 +47,71 @@ def _score_text(text: str, question_terms: list[str]) -> int:
     return sum(1 for term in question_terms if term in haystack)
 
 
-def _score_step(step: Step, question_terms: list[str]) -> int:
-    return _score_text(step.action, question_terms) + _score_text(step.observation, question_terms)
+def _extract_target_steps(question: str) -> set[int]:
+    """Extract explicit step numbers or step intervals mentioned in the question."""
+    target_steps: set[int] = set()
+    lowered = question.lower()
+    for m in re.finditer(r"\b(?:step|steps|turn|turns)\s+(\d+)", lowered):
+        target_steps.add(int(m.group(1)))
+    for m in re.finditer(r"\b(?:step|steps|turn|turns)\s+(\d+)\s*(?:-|to|and|\band\s+step\b|\band\s+turn\b)\s*(\d+)", lowered):
+        start = int(m.group(1))
+        end = int(m.group(2))
+        if start <= end and end - start <= 25:
+            target_steps.update(range(start, end + 1))
+        else:
+            target_steps.add(start)
+            target_steps.add(end)
+    return target_steps
+
+
+def _range_overlaps(range_str: str, target_steps: set[int]) -> bool:
+    if not range_str or not target_steps:
+        return False
+    parts = range_str.split("-")
+    if len(parts) == 1 and parts[0].isdigit():
+        return int(parts[0]) in target_steps
+    if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+        start, end = int(parts[0]), int(parts[1])
+        return any(start <= s <= end for s in target_steps)
+    return False
 
 
 def score_candidates(memory: NovaCodeMemory, question: str, *, top_k: int = 8) -> list[dict[str, Any]]:
     """Score all retrievable units and return the best ``top_k`` as records."""
     question_terms = _terms(question)
+    target_steps = _extract_target_steps(question)
     scored: list[dict[str, Any]] = []
 
     for group in memory.trajectory.groups:
+        step_range = _group_step_range(group)
         rendered = _render_group(group, max_chars=1_500)
         score = 0
         for message in group.messages:
             if message.role in {"user", "assistant"} and message.content or message.role == "tool" and message.content:
                 score += _score_text(message.content, question_terms)
+        if _range_overlaps(step_range, target_steps):
+            score += 15
         scored.append(
             {
                 "type": "group",
                 "id": group.group_id,
                 "score": score,
                 "text": rendered,
-                "meta": {"step_range": _group_step_range(group)},
+                "meta": {"step_range": step_range},
+            }
+        )
+
+    for timeline in memory.task_state.macro_timeline:
+        score = _score_text(timeline.summary, question_terms) * 2
+        if _range_overlaps(timeline.step_range, target_steps):
+            score += 15
+        scored.append(
+            {
+                "type": "timeline",
+                "id": timeline.id,
+                "score": score,
+                "text": f"{timeline.summary} (Outcome: {timeline.outcome})",
+                "meta": {"step_range": timeline.step_range, "outcome": timeline.outcome, "status": timeline.status},
             }
         )
 
@@ -77,6 +120,8 @@ def score_candidates(memory: NovaCodeMemory, question: str, *, top_k: int = 8) -
         for evidence in finding.evidence:
             if isinstance(evidence, dict):
                 score += _score_text(str(evidence.get("path", "")) + " " + str(evidence.get("source", "")), question_terms)
+        if finding.updated_step in target_steps:
+            score += 10
         scored.append({"type": "finding", "id": finding.id, "score": score, "text": finding.fact, "meta": {"status": finding.status}})
 
     for decision in memory.task_state.decisions:
@@ -89,8 +134,24 @@ def score_candidates(memory: NovaCodeMemory, question: str, *, top_k: int = 8) -
         # Intent carries the answer to "why"-style questions; weight it above the pattern.
         text = f"{sequence.pattern} {sequence.intent}"
         score = _score_text(sequence.intent, question_terms) * 2 + _score_text(sequence.pattern, question_terms)
+        if _range_overlaps(sequence.step_range, target_steps):
+            score += 15
         scored.append(
             {"type": "sequence", "id": sequence.id, "score": score, "text": text, "meta": {"status": sequence.status, "step_range": sequence.step_range}}
+        )
+
+    for progress in memory.task_state.completed:
+        score = _score_text(progress.text, question_terms)
+        if progress.completed_step in target_steps:
+            score += 10
+        scored.append(
+            {
+                "type": "progress",
+                "id": progress.id,
+                "score": score,
+                "text": progress.text,
+                "meta": {"completed_step": progress.completed_step},
+            }
         )
 
     for profile in memory.tool_state.profiles.values():

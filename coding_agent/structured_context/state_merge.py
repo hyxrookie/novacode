@@ -1,6 +1,7 @@
 """Deterministic ID-based state delta merging and deterministic fold extraction."""
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from .models import InteractionGroup, TaskState, ToolState
@@ -13,6 +14,7 @@ TASK_LIST_TARGETS = {
     "decisions": ("decisions",),
     "unresolved": ("unresolved",),
     "key_sequences": ("key_sequences",),
+    "macro_timeline": ("macro_timeline",),
 }
 
 TOOL_LIST_TARGETS = {
@@ -159,6 +161,20 @@ def _summarize_group(group: InteractionGroup) -> dict[str, Any]:
     }
 
 
+def _group_step_range_str(group: InteractionGroup) -> str:
+    first = last = ""
+    for message in group.messages:
+        content = str(message.content or "")
+        for m in re.finditer(r"\bStep\s+(\d+)", content):
+            first = first or m.group(1)
+            last = m.group(1)
+    if first and last and first != last:
+        return f"{first}-{last}"
+    if first:
+        return first
+    return str(group.created_step)
+
+
 def deterministic_fold_delta(
     task_state: TaskState,
     tool_state: ToolState,
@@ -181,8 +197,27 @@ def deterministic_fold_delta(
 
     for index, group in enumerate(groups):
         summary = _summarize_group(group)
+        step_range = _group_step_range_str(group)
+
+        timeline_id = f"tl-{epoch_id}-{group.group_id}"
+        timeline_text = (summary["output_summaries"][0] if summary["output_summaries"] else "") or f"tool group {group.group_id} executed"
+        outcome = "succeeded" if summary["success_count"] and not summary["failure_count"] else ("failed" if summary["failure_count"] else "observed")
+        task_delta["append"].append(
+            {
+                "target": "macro_timeline",
+                "dedupe_key": "id",
+                "item": {
+                    "id": timeline_id,
+                    "step_range": step_range,
+                    "summary": timeline_text[:50],
+                    "outcome": outcome,
+                    "status": "valid",
+                },
+            }
+        )
+
         if summary["success_count"]:
-            text = "; ".join(summary["output_summaries"][:3]) or f"tool group {group.group_id} completed"
+            tools_str = ", ".join(summary["tools"][:2]) if summary["tools"] else "step"
             progress_id = f"p-{epoch_id}-{group.group_id}"
             if progress_id not in completed_ids:
                 task_delta["append"].append(
@@ -191,7 +226,7 @@ def deterministic_fold_delta(
                         "dedupe_key": "id",
                         "item": {
                             "id": progress_id,
-                            "text": text[:240],
+                            "text": f"{tools_str} step {group.created_step} completed"[:40],
                             "completed_step": group.created_step,
                             "evidence_refs": [],
                         },

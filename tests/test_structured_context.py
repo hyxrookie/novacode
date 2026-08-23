@@ -79,6 +79,33 @@ def test_key_sequences_merge_and_roundtrip() -> None:
     assert restored.key_sequences[0].step_range == "7-8"
 
 
+def test_macro_timeline_merge_and_roundtrip() -> None:
+    state = TaskState.new(task_id="t", objective="o").to_dict()
+    merge_task_delta(
+        state,
+        {
+            "append": [
+                {
+                    "target": "macro_timeline",
+                    "dedupe_key": "id",
+                    "item": {
+                        "id": "tl-1",
+                        "step_range": "1-10",
+                        "summary": "explored room and found key",
+                        "outcome": "succeeded",
+                        "status": "valid",
+                    },
+                }
+            ]
+        },
+    )
+    assert state["macro_timeline"][0]["id"] == "tl-1"
+    restored = TaskState.from_dict(state)
+    assert restored.macro_timeline[0].step_range == "1-10"
+    assert restored.macro_timeline[0].summary == "explored room and found key"
+    assert restored.macro_timeline[0].outcome == "succeeded"
+
+
 def test_fold_parse_delta_tolerates_single_quoted_json() -> None:
     from coding_agent.structured_context.fold_engine import FoldDeltaValidationError, FoldEngine
 

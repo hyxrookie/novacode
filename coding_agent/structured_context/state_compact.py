@@ -116,6 +116,7 @@ class StateCompactor:
         task_state.decisions = new_task_state.decisions
         task_state.unresolved = new_task_state.unresolved
         task_state.key_sequences = new_task_state.key_sequences
+        task_state.macro_timeline = new_task_state.macro_timeline
         task_state.extensions = new_task_state.extensions
         tool_state.schema_version = new_tool_state.schema_version
         tool_state.profiles = new_tool_state.profiles
@@ -149,7 +150,8 @@ class StateCompactor:
         protected_refs: set[str],
     ) -> None:
         budget = self.config.task_budget_tokens
-        if self._tokens(task_dict) <= budget:
+        effective_budget = max(50, budget - 30)
+        if self._tokens(task_dict) <= effective_budget:
             return
 
         progress = task_dict.setdefault("progress", {})
@@ -171,7 +173,7 @@ class StateCompactor:
         )
 
         for item in [*finding_candidates, *valid_finding_candidates, *progress_candidates]:
-            if self._tokens(task_dict) <= budget:
+            if self._tokens(task_dict) <= effective_budget:
                 break
             for collection in (findings, completed):
                 if item in collection:
