@@ -1,268 +1,321 @@
 # NovaCode
 
-A small, understandable, hackable coding agent harness in Python 3.11+.
+<p align="center">
+  <strong>A lightweight, hackable, and production-grade coding agent harness in Python 3.11+.</strong>
+</p>
 
-NovaCode drives an LLM to complete coding tasks inside one workspace. It has a
-thin AgentLoop, a unified LLM provider interface (OpenAI + Anthropic official
-SDKs), eight standard tools, optional Planner Mode, bounded subagents, session
-persistence and JSONL execution traces. It intentionally does **not** include a
-workflow engine, DAGs, multi-agent coordination or reflection agents.
+<p align="center">
+  <a href="README.md"><strong>English</strong></a> |
+  <a href="README_zh.md"><strong>简体中文</strong></a>
+</p>
 
-## Install
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.11%20%7C%203.12-blue.svg" alt="Python Version" />
+  <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License" />
+  <img src="https://img.shields.io/badge/providers-OpenAI%20%7C%20Anthropic-purple.svg" alt="Providers" />
+  <img src="https://img.shields.io/badge/benchmarks-SWE--bench%20%7C%20AMA--Bench-orange.svg" alt="Benchmarks" />
+</p>
+
+---
+
+## 🌟 Highlights & Philosophy
+
+NovaCode drives Large Language Models (LLMs) to complete real-world software engineering tasks inside isolated workspaces. Built from first principles, it prioritizes **transparency, predictability, and hackability** over opaque multi-agent frameworks or heavy workflow DAGs.
+
+- ⚡ **Minimal & Understandable Core**: Single `AgentLoop` runtime with explicit state transitions, strict tool execution boundaries, and zero opaque abstractions.
+- 🧊 **KV-Cache Friendly Structured Context (v3)**: Stable prefix invariance, adaptive trajectory folding, typed state delta compaction, and crash recovery with immutable checkpoints.
+- 🧠 **Durable Long-Term Memory**: Project-local and user-global memory stores with out-of-band two-stage prefetch, bilingual tokenization, and deterministic 7-rule negative suppression.
+- 🛠️ **Self-Evolving Skills & Task Episodes**: Episode-gated skill evolution grounded in AutoSkill, CODESKILL, and CoEvoSkills research, loaded on-demand via fixed meta-tools without prompt bloat.
+- 💻 **Modern Interactive TUI**: Real-time markdown token streaming, prompt_toolkit interactive interface, collapsible reasoning/thinking inspection (`/think`), and slash commands.
+- 🧪 **Rigorous Benchmark Integrations**: Built-in harnesses for **SWE-bench Verified**, **AMA-Bench** (ICML 2026 memory benchmark with standalone runner & judge), and Context Reduction Ratio (CRR) evaluation.
+
+---
+
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TB
+    subgraph UI["User Interface Layer"]
+        CLI["CLI / main.py"]
+        TUI["Interactive TUI (Rich + prompt_toolkit)"]
+        Stream["Live Token & Thinking Stream"]
+    end
+
+    subgraph Core["NovaCode Core Runtime"]
+        Loop["AgentLoop"]
+        Plan["Planner & Validator"]
+        Guard["Workspace Path Guard"]
+        Sub["Bounded Subagents (Depth <= 1)"]
+    end
+
+    subgraph MemoryLayer["Memory & Context Layer"]
+        SC["Structured Context v3<br/>(Prefix + Task/Tool State + Macro Timeline)"]
+        Fold["Trajectory Fold Engine<br/>(Adaptive 30% Ratio + LLM/Deterministic Fallback)"]
+        LTM["Long-Term Memory<br/>(Project .agent vs User ~/.novacode)"]
+        Supp["7 Negative Suppression Rules"]
+    end
+
+    subgraph SkillsLayer["Self-Evolving Skills Layer"]
+        Bank["Skill Bank (SKILL.md + Scripts)"]
+        Gate["Episode Verification Gate<br/>(report_task_outcome)"]
+        Evo["Candidate Evolution & Promotion"]
+    end
+
+    subgraph Tools["Execution & Tooling Layer"]
+        FS["Filesystem (read / write / edit / list / search / grep)"]
+        Shell["Shell Executor (Timeout / Output Cap)"]
+        Meta["Meta Tools (invoke_skill, report_task_outcome)"]
+    end
+
+    subgraph LLM["Unified LLM Provider"]
+        OpenAI["OpenAI SDK (GPT-4o, o-series)"]
+        Anthropic["Anthropic SDK (Claude 3.5 / 3.7)"]
+        Effort["Reasoning Effort Control (none / low / high / max)"]
+    end
+
+    UI --> Core
+    Core --> LLM
+    Core --> Tools
+    Core --> MemoryLayer
+    Core --> SkillsLayer
+    Tools --> Guard
+```
+
+---
+
+## 🚀 Quick Start
+
+### 1. Installation
 
 ```bash
+# Create and activate virtual environment
 python3.11 -m venv .venv && source .venv/bin/activate
+
+# Install NovaCode in editable mode
 pip install -e .
+
+# (Optional) Install SWE-bench evaluation extras
+pip install -e ".[swebench]"
 ```
 
-Dependencies: `openai`, `anthropic`, `rich`.
+### 2. Configure Environment
 
-## Quick start
-
-```bash
-# One-shot task
-export OPENAI_API_KEY=...
-python main.py "add a health check endpoint" --workspace ./myproject --planner
-
-# Interactive TUI
-python main.py --interactive
-
-# Continue a session
-python main.py "now also add /ready" --session <session_id>
-
-# List sessions
-python main.py --list-sessions
-```
-
-## .env configuration
-
-Edit the included `.env` file to choose a provider and set credentials:
+Create or edit `.env` in your project root:
 
 ```bash
-# provider: openai | anthropic
+# Provider: openai | anthropic
 NOVACODE_PROVIDER=openai
 NOVACODE_MODEL=gpt-4o-mini
-
 OPENAI_API_KEY=sk-...
-# Optional OpenAI-compatible base URL
-NOVACODE_BASE_URL=
 
-# For anthropic:
+# Or for Anthropic:
 # NOVACODE_PROVIDER=anthropic
+# NOVACODE_MODEL=claude-3-5-sonnet-latest
 # ANTHROPIC_API_KEY=sk-ant-...
+
+# Optional OpenAI-compatible base URL (vLLM, Ollama, DeepSeek, etc.)
+# NOVACODE_BASE_URL=https://api.openai.com/v1
 ```
 
-`python main.py ...` and the installed `novacode` command automatically look
-for `.env` in this order:
-
-1. `--env-file PATH` or `NOVACODE_ENV_FILE`
-2. the current directory and its parent directories
-3. the directory containing `main.py`
+### 3. Usage Examples
 
 ```bash
-python main.py --env-file /path/to/other.env ...
-```
+# One-shot task with Planner Mode
+novacode "Add health check endpoint and write unit tests" --workspace ./myproject --planner
 
-Priority: **real shell environment variables > .env > built-in defaults**. At
-startup the effective provider/model are printed as:
+# Start Interactive Rich TUI
+novacode --interactive
 
-```text
-[env] loaded /path/to/.env
-[config] provider=anthropic model=claude-3-5-sonnet-latest
-```
+# Continue an existing session
+novacode "Now add rate limiting to the health check" --session <session_id>
 
-If `[config] provider` is not what your `.env` says, an already-exported shell
-variable (for example `NOVACODE_PROVIDER=openai`) is overriding it.
+# Run with Structured Context (v3 checkpoint-resume storage)
+novacode "Refactor database models" --structured-context --workspace ./myproject
 
-All supported variables:
+# Inspect skill bank and evolution status without making LLM calls
+novacode --skill-eval --workspace ./myproject
 
-| Variable | Meaning |
-|---|---|
-| `NOVACODE_PROVIDER` | `openai` (default) or `anthropic` |
-| `NOVACODE_MODEL` | model name |
-| `NOVACODE_MAX_TOKENS` | max output tokens per LLM response; thinking/reasoning tokens share this budget with the final text |
-| `NOVACODE_REASONING_EFFORT` | main-agent thinking effort: `none` \| `low` \| `high` \| `max` (empty = provider default, thinking on) |
-| `NOVACODE_SECONDARY_REASONING_EFFORT` | effort for subagents and context folding (default `none`) |
-| `NOVACODE_SHOW_THINKING` | `1/true/yes/on` shows reasoning/thinking in the TUI, collapsed to a one-line summary (expand with `/think` in interactive mode; default off) |
-| `OPENAI_API_KEY` | OpenAI key |
-| `ANTHROPIC_API_KEY` | Anthropic key |
-| `NOVACODE_API_KEY` | generic key for the selected provider |
-| `NOVACODE_BASE_URL` | optional custom base URL |
-| `NOVACODE_WORKSPACE` | default workspace |
-| `NOVACODE_PLANNER` | `1/true/yes/on` enables Planner Mode |
+# List all stored sessions
+novacode --list-sessions
 
-## Offline demo
-
-`demo.py` uses a deterministic scripted provider and needs no API key. It runs
-the full runtime loop with Planner Mode, filesystem tools, `run_shell`,
-validation, session persistence and traces:
-
-```bash
+# Run offline demo (Deterministic scripted provider, zero API keys needed)
 python demo.py
 ```
 
-## Project layout
+---
 
-```text
-main.py                       CLI entry
-config.py                     LLMConfig / AgentConfig / Constraints
-coding_agent/
-  agent.py                    AgentLoop
-  llm/                        unified protocol + OpenAI/Anthropic adapters
-  tools/                      Tool protocol, registry, executor, 8 tools, path guard
-  context/                    ContextManager + JSON SessionStore
-  runtime/                    planner, validator, constraints/budget, trace
-  tui/                        Rich terminal UI
-```
+## 🧩 Key Subsystems
 
-Sessions are written to `.sessions/<session_id>.json` and traces to
-`.traces/<session_id>.jsonl`.
+### 1. Structured Context & Trajectory Folding (v3)
 
-## Tools
+Long-horizon software tasks quickly exceed context windows and degrade LLM performance. NovaCode v3 introduces a KV-Cache-friendly structured context system:
 
-`read_file`, `write_file`, `edit_file`, `list_files`, `search_files`,
-`grep_search`, `run_shell`, `subagent`, plus the static meta-tools
-`invoke_skill` and `report_task_outcome`.
-
-## Skills and task episodes
-
-Reusable skills are discovered from `.agent/skills/<name>/SKILL.md` and
-`~/.novacode/skills/<name>/SKILL.md` (project entries take precedence). Skills
-are loaded on demand through the fixed `invoke_skill` schema, so adding a skill
-does not change the prompt/tool prefix. Structured-context sessions also store
-multi-turn episode transitions in `episodes.jsonl`; a turn only completes an
-episode after `report_task_outcome(disposition="completion_proposed", ...)`
-passes the deterministic evidence and verification gate.
-
-Inspect the bank and pending evolution window without an LLM call:
+- **Physical Layout**:
+  - `Stable Prefix`: Frozen system prompt for maximum KV cache hits.
+  - `Task State & Tool State`: Structured key findings, decisions, file modifications, and environment constraints.
+  - `Macro Timeline`: High-level step summaries tracking task trajectory across epochs.
+  - `Recent Trajectory`: Most recent interaction groups kept verbatim.
+  - `Raw Artifact Store`: Large tool outputs offloaded to disk (`.agent/sessions/<id>/artifacts/`).
+- **Adaptive Trajectory Folding**: Folds oldest interaction groups when context exceeds threshold, compressing down to target ratio (default 30%) with LLM-assisted extraction and deterministic fallback.
+- **Crash Recovery & Checkpoints**: Immutable snapshot checkpoints + replay from append-only `events.jsonl`.
+- **Workspace Drift Reconciliation**: Validates git hashes and workspace state before turns, auto-classifying state as `RESUME`, `REPLAN`, or `BLOCKED`.
 
 ```bash
-python main.py --skill-eval --workspace ./myproject
+# Migrate a legacy flat session to structured context storage
+novacode --structured-context --migrate-legacy-session <session_id>
 ```
 
-Filesystem tools resolve every path through one workspace guard that rejects
-absolute paths, `..` traversal and symlink escapes. `run_shell` runs with the
-workspace as cwd, enforces a timeout and output cap, and has a small deny list.
-It is a best-effort guard, not a security sandbox.
+---
 
-## Structured context / checkpoint-resume (v3, opt-in)
+### 2. KV-Cache Friendly Long-Term Memory
 
-A structured context mode is available behind a flag:
+Cross-session knowledge retention without polluting prompt prefixes or degrading prompt cache:
+
+- **Dual-Tier Isolation**:
+  - **Project Memory** (`<workspace>/.agent/memories/`): Architecture conventions, tech stacks, repository facts.
+  - **User Memory** (`~/.novacode/memories/`): Developer preferences, workflows, personal styling.
+- **4-Category Taxonomy**:
+  1. `user_preference`: User interaction habits and developer preferences.
+  2. `project_fact`: Immutable architectural and environmental invariants.
+  3. `decision_record`: Historical architectural choices and validated bugfix recipes.
+  4. `tool_experience`: Environment quirks and specific command workarounds.
+- **7 Negative Suppression Rules**: Rejects ephemeral workspace observations ("folder is empty"), unverified theories, transient errors, and duplicate facts.
+- **Out-of-Band Prefetch**: Retrieval runs outside the main LLM context; relevant memories are injected dynamically into the current turn slot without altering past turn history.
+
+---
+
+### 3. Self-Evolving Skills & Task Episodes
+
+Inspired by **AutoSkill**, **CODESKILL**, and **CoEvoSkills**:
+
+- **On-Demand Execution**: Skills are discovered from `.agent/skills/` (project) and `~/.novacode/skills/` (user) and executed via the fixed `invoke_skill` schema, preventing prompt bloat.
+- **Episode Verification Gate**: Sessions record task transitions in `episodes.jsonl`. Skills are only promoted after `report_task_outcome(disposition="completion_proposed", ...)` passes rigorous verification and deterministic evidence checks.
+- **Candidate Lifecycle**: `Observed` -> `Pending Candidate` -> `Verified Promotion` -> `Skill Bank`.
+
+---
+
+### 4. Interactive TUI & Live Streaming
+
+- Built with `rich` and `prompt_toolkit`.
+- Full token streaming for both OpenAI and Anthropic providers.
+- **Collapsible Reasoning/Thinking**: Collapses model chain-of-thought to a clean single line; expand/collapse on demand using `/think`.
+- Interactive slash commands: `/think`, `/plan`, `/clear`, `/help`, `/exit`.
+
+---
+
+## 📊 Benchmarks & Evaluations
+
+### 1. SWE-bench Verified Evaluation
+
+Run NovaCode against SWE-bench instances with Docker network isolation:
 
 ```bash
-python main.py "add a health check endpoint" --structured-context --agent-dir .agent
+# Run one instance (e.g. sympy__sympy-20590)
+python -m evals.swe_bench run   --dataset verified   --instance sympy__sympy-20590   --output .eval-results/swe-sympy-20590
+
+# Grade the generated patch using official harness
+swebench eval verified   -p .eval-results/swe-sympy-20590/predictions.jsonl   --run-id novacode-sympy-20590 -j 1
 ```
 
-It stores each session as a directory under `.agent/sessions/<session_id>/`
-with `task-state.json`, `tool-state.json`, `trajectory.json`, `events.jsonl`,
-raw tool-result artifacts and immutable checkpoints. Resume the same way as a
-legacy session:
+### 2. AMA-Bench (ICML 2026 Long-Horizon Memory Benchmark)
+
+NovaCode provides a native adapter (`NovaCodeMemoryMethod`), standalone runner, and self-contained LLM-as-judge:
 
 ```bash
-python main.py "now also add /ready" --structured-context --session <session_id>
+# 1. Download AMA-Bench dataset
+huggingface-cli download AMA-bench/AMA-bench --repo-type dataset --local-dir ./dataset
+
+# 2. Run evaluation on open-ended tasks
+python -m ama_bench.run   --dataset dataset/test/open_end_qa_set.jsonl   --episode-ids 0,1,2   --output results/novacode_openend.jsonl   --audit-dir results/audit
+
+# 3. Evaluate answers with self-contained LLM-as-judge
+python -m ama_bench.judge   --answers-file results/novacode_openend.jsonl   --test-file dataset/test/open_end_qa_set.jsonl   --output-file results/evaluation.json
 ```
 
-Structured sessions also support crash replay of un-checkpointed events,
-LLM-assisted trajectory folding with deterministic fallback, state capacity
-control, workspace-drift RESUME / REPLAN / BLOCKED recovery, session locks and
-legacy-session migration:
+See [README_AMA_BENCH.md](README_AMA_BENCH.md) for full benchmarks and audit documentation.
+
+### 3. Structured Context Reduction Benchmarks
+
+Evaluate token savings, Context Reduction Ratio (CRR), and p50/p95 prompt costs:
 
 ```bash
-python main.py --structured-context --migrate-legacy-session <session_id>
-```
-
-Design baseline: `coding_agent_context_management_v3.md`; detailed schema and
-implementation breakdown: `coding_agent_context_management_v3_schema.md`;
-automated measurement design for Context Reduction Ratio and p50/p95 input
-tokens: `structured_context_evaluation_plan.md`. The versioned evaluation task
-data lives under `evals/structured_context/data/` (30 full-run scenarios and 12
-offline replay recipes). Run deterministic replay with no model/network call:
-
-```bash
+# Deterministic offline replay (no API calls)
 python -m evals.structured_context offline --output .eval-results/offline
+
+# Scripted end-to-end smoke evaluation
+python -m evals.structured_context run --scripted --scenario short-01   --variant raw_full --variant structured --output .eval-results/scripted
 ```
 
-The isolated full-run framework requires an explicitly injected provider. Its
-built-in end-to-end smoke path is also offline:
+---
 
-```bash
-python -m evals.structured_context run --scripted --scenario short-01 \
-  --variant raw_full --variant structured --output .eval-results/scripted
-```
+## ⚙️ Configuration Reference
 
-The CLI never constructs a live provider; nightly callers inject one through
-`ContextEvaluationRunner`, so evaluation cannot silently make paid API calls.
-Generated fixtures are trusted local test code: workspace copying, command
-allowlists and hashes are regression isolation, not a hostile-code OS sandbox.
+Configuration resolution follows: **CLI Flags > Shell Environment Variables > `.env` File > Defaults**.
 
-## SWE-bench single-instance evaluation
+| Variable | CLI Flag | Default | Description |
+|---|---|---|---|
+| `NOVACODE_PROVIDER` | `--provider` | `openai` | LLM provider: `openai` or `anthropic` |
+| `NOVACODE_MODEL` | `--model` | `gpt-4o-mini` | Model identifier |
+| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | `--api-key` | `None` | Provider authentication key |
+| `NOVACODE_BASE_URL` | `--base-url` | `None` | Custom OpenAI-compatible endpoint |
+| `NOVACODE_WORKSPACE` | `--workspace` | `.` | Target workspace directory |
+| `NOVACODE_PLANNER` | `--planner` | `false` | Enable Planner Mode |
+| `NOVACODE_MAX_TOKENS` | - | `4096` | Max output tokens per model generation |
+| `NOVACODE_REASONING_EFFORT` | - | `none` | Thinking effort: `none`, `low`, `high`, `max` |
+| `NOVACODE_SHOW_THINKING` | - | `false` | Display model thinking in TUI (`1`/`true`) |
+| `NOVACODE_STRUCTURED_CONTEXT` | `--structured-context` | `false` | Enable Structured Context v3 storage |
+| `NOVACODE_STORAGE_LOCATION` | `--storage-location` | `project` | Storage root: `project` (`.agent`) or `user` (`~/.novacode`) |
+| `NOVACODE_GLOBAL_MEMORY_LOCATION`| `--global-memory-location` | `user` | Global memory root: `user` or `agent` |
 
-Install the optional official harness dependencies and ensure Docker is
-available:
+---
 
-```bash
-pip install -e '.[swebench]'
-docker info
-```
-
-If Hugging Face is unreachable from your network, select a reachable mirror
-for both inference and grading commands, for example:
-
-```bash
-export HF_ENDPOINT=https://hf-mirror.com
-export HF_HUB_DISABLE_XET=1
-```
-
-Run NovaCode on one SWE-bench Verified instance:
-
-```bash
-python -m evals.swe_bench run \
-  --dataset verified \
-  --instance sympy__sympy-20590 \
-  --output .eval-results/swe-sympy-20590
-```
-
-The adapter keeps NovaCode and provider credentials on the host. It copies the
-official image's pristine `/testbed` repository to an isolated workspace,
-mounts that workspace back into a network-disabled container, and routes only
-`run_shell` through Docker. The agent receives `problem_statement`, never the
-gold `patch`, evaluator `test_patch` or test lists.
-
-The run writes `patch.diff`, `result.json`, traces, and the official
-`predictions.jsonl`. Grade it independently with the SWE-bench harness:
-
-```bash
-swebench eval verified \
-  -p .eval-results/swe-sympy-20590/predictions.jsonl \
-  --run-id novacode-sympy-20590 -j 1
-```
-
-Before model inference, validate the evaluator itself with a reference patch:
-
-```bash
-swebench eval verified --gold \
-  -i sympy__sympy-20590 --run-id validate-gold
-```
-
-Use `--keep-workspace` for debugging, `--no-pull` for an offline run, and
-`--structured-context` to evaluate the structured harness. Runtime state is
-always stored outside the task repository so it cannot leak into the patch.
-
-## Runtime loop
+## 📁 Repository Structure
 
 ```text
-User Task
-→ optional Plan
-→ LLM
-→ Tool Call
-→ ToolExecutor (timeout / retry / structured error)
-→ Tool Result message
-→ LLM
-→ final-answer validation
-→ correction feedback if needed
-→ Final Answer
+novacode/
+├── main.py                        # CLI entry point
+├── config.py                      # Global configuration and dataclasses
+├── demo.py                        # Offline deterministic runnable demo
+├── coding_agent/                  # Core Agent implementation
+│   ├── agent.py                   # Main AgentLoop execution engine
+│   ├── llm/                       # Unified LLM provider protocols & adapters
+│   ├── tools/                     # 8 core tools, registry, executor, path guard
+│   ├── context/                   # Legacy session management
+│   ├── structured_context/        # v3 Structured context, folding, checkpoints
+│   ├── long_term_memory/          # KV-cache-friendly memory & suppression
+│   ├── skills/                    # Self-evolving skills bank, verifier & hooks
+│   ├── runtime/                   # Planner, validator, constraints, trace logger
+│   └── tui/                       # Rich & prompt_toolkit interactive interface
+├── ama_bench/                     # AMA-Bench ICML 2026 adapter, runner & judge
+├── evals/                         # Benchmark testbeds
+│   ├── swe_bench/                 # SWE-bench verified Docker runner
+│   └── structured_context/        # Context reduction ratio evaluation suite
+├── tests/                         # Full automated pytest test suite (185+ tests)
+├── README.md                      # English documentation
+├── README_zh.md                   # Chinese documentation
+└── README_AMA_BENCH.md            # AMA-Bench in-depth documentation
 ```
 
-Subagents reuse the same provider and standard tools with an independent
-context and max_steps. By default `max_subagent_depth = 1`, so a subagent may
-not spawn another subagent.
+---
+
+## 🧪 Testing
+
+NovaCode maintains a comprehensive test suite covering all subsystems:
+
+```bash
+# Run all unit and integration tests
+pytest
+
+# Run tests with coverage or specific modules
+pytest tests/test_structured_context.py
+pytest tests/test_long_term_memory.py
+pytest tests/test_skills.py
+pytest tests/test_ama_bench.py
+pytest tests/test_swe_bench.py
+```
+
+---
+
+## 📄 License
+
+NovaCode is licensed under the [MIT License](LICENSE).
