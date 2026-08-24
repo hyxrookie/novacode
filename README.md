@@ -232,7 +232,6 @@ python -m ama_bench.run   --dataset dataset/test/open_end_qa_set.jsonl   --episo
 python -m ama_bench.judge   --answers-file results/novacode_openend.jsonl   --test-file dataset/test/open_end_qa_set.jsonl   --output-file results/evaluation.json
 ```
 
-See [README_AMA_BENCH.md](README_AMA_BENCH.md) for full benchmarks and audit documentation.
 
 ### 3. Structured Context Reduction Benchmarks
 
@@ -292,8 +291,7 @@ novacode/
 │   └── structured_context/        # Context reduction ratio evaluation suite
 ├── tests/                         # Full automated pytest test suite (185+ tests)
 ├── README.md                      # English documentation
-├── README_zh.md                   # Chinese documentation
-└── README_AMA_BENCH.md            # AMA-Bench in-depth documentation
+└── README_zh.md                   # Chinese documentation
 ```
 
 ---

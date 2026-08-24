@@ -232,7 +232,6 @@ python -m ama_bench.run   --dataset dataset/test/open_end_qa_set.jsonl   --episo
 python -m ama_bench.judge   --answers-file results/novacode_openend.jsonl   --test-file dataset/test/open_end_qa_set.jsonl   --output-file results/evaluation.json
 ```
 
-详细参数与审计回放说明请参考 [README_AMA_BENCH.md](README_AMA_BENCH.md)。
 
 ### 3. 结构化上下文压缩率评测 (CRR)
 
@@ -292,8 +291,7 @@ novacode/
 │   └── structured_context/        # 上下文压缩比 (CRR) 自动化评测
 ├── tests/                         # 自动化测试用例集（185+ 单元与集成测试）
 ├── README.md                      # 英文说明文档
-├── README_zh.md                   # 中文说明文档
-└── README_AMA_BENCH.md            # AMA-Bench 专项深度指南
+└── README_zh.md                   # 中文说明文档
 ```
 
 ---
